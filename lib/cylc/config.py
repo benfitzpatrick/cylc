@@ -1239,17 +1239,25 @@ class config( object ):
                         if left_name in tasks_to_prune:
                             pruned_left_nodes.remove(left_node)
 
+                processed_left_nodes = pruned_left_nodes
+                processed_right_name = right_name
+
+                if left_nodes and not pruned_left_nodes:
+                    # We now have a lone right node with no left nodes.
+                    processed_left_nodes = [right_name]
+                    processed_right_name = None
+
                 if not self.validation and not graphing_disabled:
                     # edges not needed for validation
-                    self.generate_edges( lexpression, pruned_left_nodes,
-                                         right_name, ttype,
+                    self.generate_edges( lexpression, processed_left_nodes,
+                                         processed_right_name, ttype,
                                          seq, suicide )
-                self.generate_taskdefs( orig_line, pruned_left_nodes,
-                                        right_name, ttype,
+                self.generate_taskdefs( orig_line, processed_left_nodes,
+                                        processed_right_name, ttype,
                                         section, seq, offset_seq_map,
                                         seq.get_interval() )
-                self.generate_triggers( lexpression, pruned_left_nodes,
-                                        right_name, seq,
+                self.generate_triggers( lexpression, processed_left_nodes,
+                                        processed_right_name, seq,
                                         suicide )
         return special_dependencies
             
