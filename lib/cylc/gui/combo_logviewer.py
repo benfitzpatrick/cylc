@@ -43,6 +43,8 @@ class ComboLogViewer(logviewer):
         for file_ in file_list:
             rel_file = os.path.relpath(file_, self.common_dir)
             subdir = os.path.dirname(rel_file)
+            if subdir:
+                subdir += os.path.sep
             subfile = os.path.basename(rel_file)
             self.subdirs_files.append((subdir, subfile))
         logviewer.__init__(self, name, None, file_list[0])
