@@ -2180,8 +2180,6 @@ or remove task definitions without restarting the suite."""
             else:
                 extra.append( logfile )
 
-        # for re-tries this sorts in time order due to filename:
-        # (TODO - does this still work, post secs-since-epoch file extensions?)
         err.sort(key=self._sort_key_func, reverse=True)
         out.sort(key=self._sort_key_func, reverse=True)
         window.set_size_request(800, 400)
