@@ -33,8 +33,6 @@ class ComboLogViewer(logviewer):
     """
 
     LABEL_TEXT = "Choose Log File: "
-    MAX_FILE_RADIO_NUM = 2
-    MAX_FILE_RADIO_CHAR_LENGTH = 10
 
     def __init__(self, name, file_list):
         self.common_dir = os.path.dirname(os.path.commonprefix(file_list))
@@ -84,21 +82,7 @@ class ComboLogViewer(logviewer):
             self._subfile_hbox.remove(child)
         if not subfiles:
             return
-        max_len_chars_subfiles = max([len(_) for _ in subfiles])
-        if (len(subfiles) > self.MAX_FILE_RADIO_NUM or
-                max_len_chars_subfiles > self.MAX_FILE_RADIO_CHAR_LENGTH):
-            # Use a combo box to represent the list of files.
-            subfile_combobox = gtk.combo_box_new_text()
-            
-            for file_ in subfiles:
-                subfile_combobox.append_text(file_)
-
-            subfile_combobox.connect("changed", self._switch_file_combobox)
-            subfile_combobox.set_active(0)
-            subfile_combobox.show()
-            self._subfile_hbox.pack_start(subfile_combobox)
-            return
-        # Otherwise, use some radio buttons to represent the list of files.
+        # Use some radio buttons to represent the list of files.
         radiobutton = None
         for file_ in subfiles:
             radiobutton = gtk.RadioButton(
@@ -122,14 +106,6 @@ class ComboLogViewer(logviewer):
         self.log_label.set_text(file_desc)
         self.t = tailer(self.logview, file_)
         self.t.start()
-
-    def _switch_file_combobox(self, combobox):
-        """Handle a switch to another file within a combo box."""
-        model = combobox.get_model()
-        index = combobox.get_active()
-        rel_path = os.path.join(self._subdir, model[index][0])
-        file_ = os.path.join(self.common_dir, rel_path)
-        self.set_file(file_, rel_path)
 
     def _switch_file_radiobutton(self, radiobutton):
         """Handle a switch to another file within a radio button."""
