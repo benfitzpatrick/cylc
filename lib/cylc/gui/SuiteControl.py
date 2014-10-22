@@ -1123,7 +1123,7 @@ The Cylc Suite Engine.
             view_menu.append( js_item )
             js_item.connect( 'button-press-event', self.view_task_info, task_id, 'job script' )
 
-            info_item = gtk.ImageMenuItem( 'log files' )
+            info_item = gtk.ImageMenuItem( 'job out & err' )
             img = gtk.image_new_from_stock(  gtk.STOCK_DND, gtk.ICON_SIZE_MENU )
             info_item.set_image(img)
             view_menu.append( info_item )
