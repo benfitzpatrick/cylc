@@ -175,9 +175,7 @@ def _coerce_interval( value, keys, args, back_comp_unit_factor=1 ):
                                keys[:-1], keys[-1], value))
     except SyntaxVersionError as exc:
         raise Exception(str(exc))
-    days, seconds = interval.get_days_and_seconds()
-    seconds += days * Calendar.default().SECONDS_IN_DAY
-    return seconds
+    return interval.get_seconds(skip_errors_for_nominal=True)
 
 
 def _coerce_interval_list( value, keys, args, back_comp_unit_factor=1 ):

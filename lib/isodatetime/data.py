@@ -144,6 +144,14 @@ class BadInputError(ValueError):
         return format_string.format(*format_args)
 
 
+class BadUnitsComparisonError(ValueError):
+
+    NOMINAL = "Cannot mix nominal & uniform units: {0} vs {1}"
+
+    def __str__(self):
+        return self.NOMINAL.format(*self.args)
+
+
 class TimeRecurrence(object):
 
     """Represent a recurring duration."""
@@ -219,10 +227,30 @@ class TimeRecurrence(object):
                 [i[:2] for i in inputs]
             )
 
-    def get_is_valid(self, timepoint):
+    def get_is_valid(self, timepoint, use_brute_force=False):
         """Return whether the timepoint is valid for this recurrence."""
         if not self._get_is_in_bounds(timepoint):
             return False
+        if (not use_brute_force and self.format_number == 3
+                and self.repetitions is None):
+            # See if the difference between timepoint and self.start_point can
+            # be expressed as an integral number of self.interval.
+            if self.duration.get_has_nominal_units():
+                # Duration is (at least partly) in years or months.
+                diff_duration = timepoint.sub(
+                    self.start_point, preserve_year_diff=True)
+                if diff_duration.months or self.duration.months:
+                    # This can be undefined... do it the brute force way.
+                    return self.get_is_valid(timepoint, use_brute_force=True)
+            else:
+                diff_duration = timepoint.sub(self.start_point)
+            try:
+                remainder = diff_duration % self.duration
+            except BadUnitsComparisonError:
+                # Can't compare the durations, so do it the non-cheap way.
+                return self.get_is_valid(timepoint, use_brute_force=True)
+            # self.start_point + self.interval * some_number = timepoint.
+            return (not remainder)
         for iter_timepoint in self.__iter__():
             if iter_timepoint == timepoint:
                 return True
@@ -347,6 +375,9 @@ class Duration(object):
 
     DATA_ATTRIBUTES = [
         "years", "months", "weeks", "days", "hours", "minutes", "seconds"]
+    # Nominal data attributes have values that depend on context.
+    # If we implement leap second handling, more attributes become nominal.
+    NOMINAL_DATA_ATTRIBUTES = ["years", "months"]
 
     def __init__(self, years=0, months=0, weeks=0, days=0,
                  hours=0.0, minutes=0.0, seconds=0.0, standardize=False):
@@ -404,12 +435,11 @@ class Duration(object):
                             days=self.days, hours=self.hours,
                             minutes=self.minutes, seconds=self.seconds)
 
-    def get_days_and_seconds(self):
-        """Return a roughly-converted duration in days and seconds.
+    def get_days_and_seconds(self, skip_errors_for_nominal=False):
+        """Return a duration converted to a number of days and seconds.
 
-        This cannot be accurate for non-uniform units such as years and
-        months, and may yield incorrect results if used for comparisons
-        derived from durations using these units.
+        Raise BadUnitsComparisonError if we have non-uniform (nominal)
+        unit information and skip_errors_for_nominal is False.
 
         Seconds are returned in the range
         0 <= seconds < CALENDAR.SECONDS_IN_DAY, which means that a
@@ -421,6 +451,9 @@ class Duration(object):
         # TODO: Implement error calculation for the below quantities.
         new = self.copy()
         new.to_days()
+        if not skip_errors_for_nominal:
+            if self.get_has_nominal_units():
+                raise BadComparisonUnitsError(self, "days,seconds")
         new_days = (new.years * CALENDAR.ROUGH_DAYS_IN_YEAR +
                     new.months * CALENDAR.ROUGH_DAYS_IN_MONTH +
                     new.days)
@@ -431,19 +464,48 @@ class Duration(object):
         new_days += diff_days
         return new_days, new_seconds
 
-    def get_seconds(self):
-        """Return a roughly-converted duration in seconds.
-
-        This is not rigorous when converting from non-uniform units
-        such as years and months.
+    def get_months(self):
+        """Return a converted purely-years or months duration in months.
+        
+        Raise BadUnitsComparisonError if we have non-year/non-month
+        unit information.
 
         """
-        days, seconds = self.get_days_and_seconds()
+        for attribute in self.DATA_ATTRIBUTES:
+            if attribute in ["years", "months"]:
+                continue
+            value = getattr(self, attribute)
+            if value is not None and value != 0:
+                raise BadUnitsComparisonError(self, "years,months")
+        months = 0
+        if self.years is not None:
+            months += CALENDAR.MONTHS_IN_YEAR
+        if self.months is not None:
+            months += self.months
+        return months
+
+    def get_seconds(self, skip_errors_for_nominal=False):
+        """Return a duration converted into a number of seconds.
+
+        Raise BadUnitsComparisonError if we have non-uniform (nominal)
+        unit information and skip_errors_for_nominal is False.
+
+        """
+        days, seconds = self.get_days_and_seconds(
+            skip_errors_for_nominal=skip_errors_for_nominal)
         return days * CALENDAR.SECONDS_IN_DAY + seconds
 
     def get_is_in_weeks(self):
         """Return whether we are in week representation."""
         return (self.weeks is not None)
+
+    def get_has_nominal_units(self):
+        """Return whether we are using 'nominal' (context-defined) units."""
+        for attribute in self.NOMINAL_DATA_ATTRIBUTES:
+            value = getattr(self, attribute)
+            if value is not None and value != 0:
+                return True
+        return False
 
     def to_days(self):
         """Convert to day representation rather than weeks."""
@@ -461,6 +523,58 @@ class Duration(object):
             self.weeks = self.days / CALENDAR.DAYS_IN_WEEK
             self.years, self.months, self.days = (None, None, None)
             self.hours, self.minutes, self.seconds = (None, None, None)
+
+    def _mod(self, other, divmod_mode=False):
+        """Perform mod or divmod against a Duration or integer.
+
+        If other is a Duration, return the integer results of mod
+        or divmod against the unit numbers of self and other. If the
+        units are incompatible, raise BadUnitsComparisonError.
+
+        If other is an integer, return the results of mod or divmod as
+        durations with the equivalent operations on the original
+        duration units.
+
+        """
+        if isinstance(other, Duration):
+            i_am_nominal = self.get_has_nominal_units()
+            other_is_nominal = other.get_has_nominal_units()
+            if i_am_nominal != other_is_nominal:
+                raise BadUnitsComparisonError(self, other)
+            if i_am_nominal:
+                my_months = self.get_months()
+                other_months = other.get_months()
+                if divmod_mode:
+                    return my_months // other_months, my_months % other_months
+                return my_months % other_months
+            my_seconds = self.get_seconds()
+            other_seconds = other.get_seconds()
+            if divmod_mode:
+                return my_seconds // other_seconds, my_seconds % other_seconds
+            return my_seconds % other_seconds
+        if isinstance(other, int):
+            i_am_nominal = self.get_has_nominal_units()
+            if i_am_nominal:
+                my_months = self.get_months()
+                mod_duration = Duration(months=(my_months % other),
+                                        standardise=True)
+                if divmod_mode:
+                    div_duration = Duration(months=(my_months // other),
+                                            standardise=True)
+                    return div_duration, mod_duration
+                return mod_duration
+            my_seconds = self.get_seconds()
+            mod_duration = Duration(seconds=(my_seconds % other),
+                                    standardise=True)
+            if divmod_mode:
+                div_duration = Duration(seconds=(my_seconds // other),
+                                        standardise=True)
+                return div_duration, mod_duration
+            return mod_duration
+        raise TypeError(
+            "Invalid type for modulus: " +
+            "'%s' should be integer or Duration" % type(other).__name__
+        )
 
     def __abs__(self):
         new = self.copy()
@@ -497,6 +611,12 @@ class Duration(object):
 
     def __sub__(self, other):
         return self + -1 * other
+
+    def __mod__(self, other):
+        return self._mod(other)
+
+    def __divmod__(self, other):
+        return self._mod(other, divmod_mode=True)
 
     def __mul__(self, other):
         # TODO: support float multiplication?
@@ -547,6 +667,14 @@ class Duration(object):
                 "'%s' should be Duration." %
                 type(other).__name__
             )
+        i_am_nominal = self.get_has_nominal_units()
+        other_is_nominal = other.get_has_nominal_units()
+        if i_am_nominal != other_is_nominal:
+            raise BadUnitsComparisonError(self, other)
+        if i_am_nominal:
+            my_months = self.get_months()
+            other_months = other.get_months()
+            return cmp(my_months, other_months)
         my_data = self.get_days_and_seconds()
         other_data = other.get_days_and_seconds()
         return cmp(my_data, other_data)
@@ -1197,6 +1325,9 @@ class TimePoint(object):
                 new_year_of_century = new.year % 100
         return new
 
+    def sub(self, other, preserve_year_diff=False):
+        return self.__sub__(other, preserve_year_diff=preserve_year_diff)
+
     def __add__(self, other, no_copy=False):
         if isinstance(other, TimePoint):
             if self.truncated and not other.truncated:
@@ -1327,14 +1458,15 @@ class TimePoint(object):
         other_datetime = list(other_date) + [other.get_second_of_day()]
         return cmp(my_datetime, other_datetime)
 
-    def __sub__(self, other):
+    def __sub__(self, other, preserve_year_diff=False):
         if isinstance(other, TimePoint):
             other = other.copy()
             other.set_time_zone(self.get_time_zone())
             my_year, my_day_of_year = self.get_ordinal_date()
             other_year, other_day_of_year = other.get_ordinal_date()
             diff_year = my_year - other_year
-            diff_day = my_day_of_year - other_day_of_year
+            diff_day_no_year = my_day_of_year - other_day_of_year
+            diff_day = diff_day_no_year
             if my_year > other_year:
                 diff_day += get_days_in_year_range(other_year, my_year - 1)
             else:
@@ -1355,9 +1487,12 @@ class TimePoint(object):
             if diff_hour < 0:
                 diff_day -= 1
                 diff_hour += CALENDAR.HOURS_IN_DAY
-            return Duration(days=diff_day,
+            if preserve_year_diff:
+                return Duration(years=diff_year, days=diff_day_no_year,
                                 hours=diff_hour, minutes=diff_minute,
                                 seconds=diff_second)
+            return Duration(days=diff_day, hours=diff_hour,
+                            minutes=diff_minute, seconds=diff_second)
         if not isinstance(other, Duration):
             raise TypeError(
                 "Invalid subtraction type " +
