@@ -18,7 +18,7 @@
 # Test host selection
 . $(dirname $0)/test_header
 #-------------------------------------------------------------------------------
-set_test_number 2
+set_test_number 4
 #-------------------------------------------------------------------------------
 install_suite $TEST_NAME_BASE simple
 #-------------------------------------------------------------------------------
@@ -27,5 +27,16 @@ run_ok $TEST_NAME cylc validate $SUITE_NAME
 #-------------------------------------------------------------------------------
 TEST_NAME=$TEST_NAME_BASE-run
 suite_run_ok $TEST_NAME cylc run --reference-test --debug $SUITE_NAME
+#-------------------------------------------------------------------------------
+RUN_DIR=$(cylc get-global-config --print-run-dir)/"$SUITE_NAME"
+FOO_BAR_HOST="$CYLC_TEST_TASK_HOST"
+if [[ "$CYLC_TEST_TASK_HOST" == localhost ]]; then
+    FOO_BAR_HOST=$(hostname)
+fi
+TEST_NAME=$TEST_NAME_BASE-grep-host-foo
+grep_ok "^Running on $FOO_BAR_HOST$" "$RUN_DIR/log/job/1/foo/01/job.out"
+#-------------------------------------------------------------------------------
+TEST_NAME=$TEST_NAME_BASE-grep-host-bar
+grep_ok "^Running on $FOO_BAR_HOST$" "$RUN_DIR/log/job/1/bar/01/job.out"
 #-------------------------------------------------------------------------------
 purge_suite $SUITE_NAME

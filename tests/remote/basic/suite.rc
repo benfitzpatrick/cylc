@@ -15,7 +15,7 @@
         suite shutdown event handler = cleanup.sh
 [scheduling]
     [[dependencies]]
-        graph = "foo => bar"
+        graph = "foo & bar"
 [runtime]
     [[foo]]
         command scripting = "/bin/true" # fast

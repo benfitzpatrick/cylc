@@ -1,8 +1,9 @@
 #!/bin/bash
 # remove installed remote passphrase
 set -e
-if [[ $CYLC_TEST_TASK_HOST == localhost ]]; then
-    echo "Done"
+cylc check-triggering "$@"
+if [[ $CYLC_TEST_TASK_HOST == localhost || $CYLC_TEST_TASK_HOST == $(hostname) ]]; then
+    echo "Done"    
     exit 0
 fi
 PPHRASE=.cylc/$CYLC_SUITE_REG_NAME/passphrase
