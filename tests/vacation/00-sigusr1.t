@@ -21,8 +21,12 @@
 . $(dirname $0)/test_header
 #-------------------------------------------------------------------------------
 set_test_number 6
-if [[ $(gdm --version) =~ 'GDM 3.12.2-'[23] ]]; then
-    skip 6 'SIGUSR1 broken in GDM 3.12.2-[23].'
+sleep 10 &
+SLEEP_PID="$!"
+kill -s SIGUSR1 "$SLEEP_PID"
+sleep 1
+if ps -p "$SLEEP_PID"; then
+    skip 6 "System SIGUSR1 handling appears broken."
     exit 0
 fi
 install_suite $TEST_NAME_BASE $TEST_NAME_BASE
