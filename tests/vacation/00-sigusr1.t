@@ -21,12 +21,18 @@
 . $(dirname $0)/test_header
 #-------------------------------------------------------------------------------
 set_test_number 6
-sleep 10 &
-SLEEP_PID="$!"
-kill -s SIGUSR1 "$SLEEP_PID"
-sleep 1
-if ps -p "$SLEEP_PID"; then
-    skip 6 "System SIGUSR1 handling appears broken."
+#-------------------------------------------------------------------------------
+# Check for broken SIGUSR1 implementation (e.g. GDM 3.12.2-[23], Ubuntu 14.04)
+sleep 20 >/dev/null 2>&1 &
+SLEEP_PID=$!
+kill -s USR1 "$SLEEP_PID"
+SECONDS=0
+while [[ $SECONDS < 5 ]] & ps $SLEEP_PID 1>/dev/null 2>&1; do
+    sleep 1
+    SECONDS=$(( SECONDS + 1 ))
+done
+if ps -p "$SLEEP_PID" 1>/dev/null 2>&1; then
+    skip 6 "Can't kill with SIGUSR1: system handling broken?"
     exit 0
 fi
 install_suite $TEST_NAME_BASE $TEST_NAME_BASE
