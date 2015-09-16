@@ -77,11 +77,15 @@ def get_proxy(host, port, pyro_timeout):
     return proxy
 
 
-def scan(host=get_hostname(), db=None, pyro_timeout=None, owner=user):
+def scan(host=get_hostname(), db=None, pyro_timeout=None, owner=user,
+         known_ports=None):
     """Scan ports, return a list of suites found: [(port, suite.identify())].
 
     Note that we could easily scan for a given suite+owner and return its
     port instead of reading port files, but this may not always be fast enough.
+
+    Use the known ports list, if given, to speed up rejection of old daemons.
+
     """
     base_port = GLOBAL_CFG.get(['pyro', 'base port'])
     last_port = base_port + GLOBAL_CFG.get(['pyro', 'maximum number of ports'])
@@ -101,6 +105,11 @@ def scan(host=get_hostname(), db=None, pyro_timeout=None, owner=user):
             if cylc.flags.debug:
                 print '%s:%s (connection denied)' % (host, port)
             # Back-compat <= 6.4.1
+            if known_ports is not None and port not in known_ports:
+                # Reject this port without even trying, to speed things up.
+                if cylc.flags.debug:
+                    print '%s:%s (discard, not in port files)' % (host, port)
+                continue
             msg = '  Old daemon at %s:%s?' % (host, port)
             for pphrase in load_passphrases(db):
                 try:

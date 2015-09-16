@@ -17,6 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import shlex
 import sys
 from cylc.suite_host import is_remote_host
 from cylc.owner import user, is_remote_user
@@ -134,3 +135,71 @@ class PortRetriever(object):
         if cylc.flags.verbose:
             print "Suite port is", port
         return port
+
+
+class MultiplePortsRetriever(object):
+
+    """Retrieve all ports from a host (local or remote)."""
+
+    def __init__(self, host, owner=user):
+        self.host = host
+        self.owner = owner
+        self.locn = None
+        self.local_path = os.path.join(
+            GLOBAL_CFG.get(['pyro', 'ports directory']))
+
+    def get_local(self):
+        """Get the ports files contents on this machine."""
+        ports = []
+        for file in os.listdir(self.local_path):
+            try:
+                with open(os.path.join(self.local_path, file), "r") as f:
+                    port = int(f.read().strip())
+            except (IOError, OSError, TypeError, ValueError) as exc:
+                print >> sys.stderr, exc
+            else:
+                ports.append(port)
+        return ports
+
+    def get_remote(self):
+        """Get the ports files contents on a remote machine."""
+        import subprocess
+        target = self.owner + '@' + self.host
+        remote_path = self.local_path.replace(os.environ['HOME'], '$HOME')
+        ssh_tmpl = GLOBAL_CFG.get_host_item(
+            'remote shell template', self.host, self.owner).replace(" %s", "")
+        cmd = shlex.split(ssh_tmpl) + [target] + [
+            (r'find "%s" -type f -exec sed "s/$/\n/g" {} \;' %
+             remote_path)
+        ]
+        ssh = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        ports = []
+        for line in ssh.stdout:
+            try:
+                port = int(line.strip())
+            except (TypeError, ValueError) as exc:
+                print >> sys.stderr, exc
+            else:
+                ports.append(port)
+        err = ssh.stderr.read()
+        res = ssh.wait()
+        if err:
+            print >> sys.stderr, err.rstrip('\n')
+        if res != 0:
+            raise PortFileError("ERROR, remote port files not found")
+        return ports
+
+    def get(self):
+        """Get the host's port file contents."""
+        if is_remote_host(self.host) or is_remote_user(self.owner):
+            ports = self.get_remote()
+        else:
+            ports = self.get_local()
+        return ports
+
+
+def get_ports_for_host_owner(host, owner=user):
+    """Return a list of active ports for the owner on the given host."""
+    retriever = MultiplePortsRetriever(host, owner)
+    return retriever.get()

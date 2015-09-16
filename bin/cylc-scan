@@ -50,6 +50,7 @@ import re
 from multiprocessing import cpu_count, Pool
 from time import sleep
 
+from cylc.network.port_file import get_ports_for_host_owner
 from cylc.network.port_scan import scan
 from cylc.CylcOptionParsers import cop
 from cylc.cfgspec.globalcfg import GLOBAL_CFG
@@ -304,16 +305,37 @@ def scan_all(hosts=None, reg_db_path=None, pyro_timeout=None):
         if not is_remote_host(host):
             hosts.remove(host)
             hosts.add("localhost")
+
     proc_pool_size = GLOBAL_CFG.get(["process pool size"])
     if proc_pool_size is None:
         proc_pool_size = cpu_count()
     if proc_pool_size > len(hosts):
         proc_pool_size = len(hosts)
+
+    # Get active ports to help backwards compatibility performance.
     proc_pool = Pool(proc_pool_size)
     async_results = {}
     for host in hosts:
         async_results[host] = proc_pool.apply_async(
-            scan, [host, reg_db_path, pyro_timeout])
+            get_ports_for_host_owner, [host]) 
+    proc_pool.close()
+    host_ports = {}
+    while async_results:
+        sleep(0.05)
+        for host, async_result in async_results.items():
+            if async_result.ready():
+                host_ports[host] = set(async_result.get())
+                async_results.pop(host)
+    proc_pool.join()
+
+    # Scan the hosts, using the active ports to speed up for old daemons.
+    proc_pool = Pool(proc_pool_size)
+    async_results = {}
+    for host in hosts:
+        async_results[host] = proc_pool.apply_async(
+            scan, [host, reg_db_path, pyro_timeout],
+            {"known_ports": host_ports[host]}
+        )
     proc_pool.close()
     scan_results = []
     hosts = []
@@ -327,6 +349,7 @@ def scan_all(hosts=None, reg_db_path=None, pyro_timeout=None):
                 hosts.extend([host]*len(res))
     proc_pool.join()
     return zip(hosts, scan_results)
+
 
 if __name__ == "__main__":
     main()
