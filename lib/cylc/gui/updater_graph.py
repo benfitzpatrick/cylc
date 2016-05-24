@@ -350,35 +350,48 @@ class GraphUpdater(threading.Thread):
             if (self.updater.filter_name_string or
                     self.updater.filter_states_excl):
                 for node in self.graphw.nodes():
-                    id = node.get_name()
-                    # Don't need to guard against special nodes here (yet).
-                    name, point_string = TaskID.split(id)
-                    if name not in self.all_families:
-                        # This node is a task, not a family.
-                        if id in self.updater.filt_task_ids:
+                    id_ = node.get_name()
+                    name, point_string = TaskID.split(id_)
+
+                    if name in self.all_families:
+                        # This node is a family, family-of-families, etc.
+                        if id_ in self.updater.fam_state_summary:
+                            # Family contains OK tasks, keep it.
+                            continue
+
+                        if self._filter_ok(name):
+                            # Node name directly matches name, keep it.
+                            continue
+
+                        # Checking for sub-families vs filter_string.
+                        found_ok_descendants = False
+                        for mem in self.descendants[name]:
+                            if self._filter_ok(mem):
+                                found_ok_descendants = True
+                                break
+                        if found_ok_descendants:
+                            # We found a sub-family with a matching name.
+                            continue
+
+                        if id_ in self.updater.full_fam_state_summary:
+                            # A family with no OK tasks or sub-families.
                             nodes_to_remove.add(node)
-                        elif id not in self.updater.kept_task_ids:
+                        elif self.updater.filter_name_string:
+                            # A base family node that fails the name filter.
+                            # We only filter out base families or tasks if there is a
+                            # filter string and they have no matching name or members.
+                            # Filter states don't apply.
+                            nodes_to_remove.add(node)
+                    else:
+                        # This node is a task, not a family.
+                        if id_ in self.updater.filt_task_ids:
+                            nodes_to_remove.add(node)
+                        elif id_ not in self.updater.kept_task_ids:
                             # A base node - these only appear in the graph.
-                            filter_string = self.updater.filter_name_string
-                            if (filter_string and
-                                    filter_string not in name and
-                                    not re.search(filter_string, name)):
+                            if not self._filter_ok(name):
                                 # A base node that fails the name filter.
                                 nodes_to_remove.add(node)
-                    elif id in self.fam_state_summary:
-                        # Remove family nodes if all members filtered out.
-                        remove = True
-                        for mem in self.descendants[name]:
-                            mem_id = TaskID.get(mem, point_string)
-                            if mem_id in self.updater.kept_task_ids:
-                                remove = False
-                                break
-                        if remove:
-                            nodes_to_remove.add(node)
-                    elif id in self.updater.full_fam_state_summary:
-                        # An updater-filtered-out family.
-                        nodes_to_remove.add(node)
-
+ 
             # Base node cropping.
             if self.crop:
                 # Remove all base nodes.
@@ -455,6 +468,13 @@ class GraphUpdater(threading.Thread):
 
         self.prev_graph_id = current_id
         return not needs_redraw
+
+    def _filter_ok(self, name):
+        """Return True if there is a filter_string and name contains it."""
+        return not self.updater.filter_string or (
+            self.updater.filter_string in name or
+            re.search(self.updater.filter_string, name)
+        )
 
     def get_graph_id(self, edges):
         """If any of these quantities change, the graph should be redrawn."""
