@@ -34,7 +34,7 @@ from parsec.validate import IllegalValueError
 CYCLER_TYPE_ISO8601 = "iso8601"
 CYCLER_TYPE_SORT_KEY_ISO8601 = "b"
 
-MEMOIZE_LIMIT = 10000
+MEMOIZE_LIMIT = 100000
 
 DATE_TIME_FORMAT = "CCYYMMDDThhmm"
 EXPANDED_DATE_TIME_FORMAT = "+XCCYYMMDDThhmm"
@@ -321,7 +321,7 @@ class ISO8601Sequence(SequenceBase):
 
     TYPE = CYCLER_TYPE_ISO8601
     TYPE_SORT_KEY = CYCLER_TYPE_SORT_KEY_ISO8601
-    _MAX_CACHED_POINTS = 100
+    _MAX_CACHED_POINTS = 1000
 
     __slots__ = ('dep_section', 'context_start_point', 'context_end_point',
                  'offset', '_cached_first_point_values',

@@ -619,6 +619,15 @@ class TimeZone(Duration):
         return TimeZone(hours=self.hours, minutes=self.minutes,
                         unknown=self.unknown)
 
+    def __cmp__(self, other):
+        if not isinstance(other, TimeZone):
+            raise TypeError(
+                "Invalid type for comparison: " +
+                "'%s' should be TimePoint." %
+                type(other).__name__
+            )
+        return cmp((self.hours, self.minutes), (other.hours, other.minutes))
+
     def __str__(self):
         if self.unknown:
             return ""
@@ -1301,8 +1310,6 @@ class TimePoint(object):
             raise TypeError(
                 "Cannot compare truncated to non-truncated " +
                 "TimePoint: %s, %s" % (self, other))
-        if self.get_props() == other.get_props():
-            return 0
         if self.truncated:
             for attribute in self.DATA_ATTRIBUTES:
                 other_attr = getattr(other, attribute)
@@ -1310,8 +1317,9 @@ class TimePoint(object):
                 if other_attr != self_attr:
                     return cmp(self_attr, other_attr)
             return 0
-        other = other.copy()
-        other.set_time_zone(self.get_time_zone())
+        if other.get_time_zone() != self.get_time_zone():
+            other = other.copy()
+            other.set_time_zone(self.get_time_zone())
         if self.get_is_calendar_date():
             my_date = self.get_calendar_date()
             other_date = other.get_calendar_date()
